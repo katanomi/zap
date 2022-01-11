@@ -18,27 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-package zapcore
+package grpc
 
-import (
-	"testing"
-	"time"
-
-	"go.uber.org/zap/internal/ztest"
-)
-
-// Verify that the mock clock satisfies the Clock interface.
-var _ Clock = (*ztest.MockClock)(nil)
-
-func TestSystemClock_NewTicker(t *testing.T) {
-	want := 3
-
-	var n int
-	timer := DefaultClock.NewTicker(time.Millisecond)
-	for range timer.C {
-		n++
-		if n == want {
-			return
-		}
-	}
-}
+// This file exists to treat this directory as a valid package with at least
+// one non-test file.
