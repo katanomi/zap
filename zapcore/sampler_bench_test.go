@@ -22,12 +22,14 @@ package zapcore_test
 
 import (
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/atomic"
 	"go.uber.org/zap/internal/ztest"
+
+	//revive:disable:dot-imports
 	. "go.uber.org/zap/zapcore"
 )
 
@@ -236,9 +238,9 @@ func makeSamplerCountingHook() (func(_ Entry, dec SamplingDecision), *atomic.Int
 	sampledCount := new(atomic.Int64)
 	h := func(_ Entry, dec SamplingDecision) {
 		if dec&LogDropped > 0 {
-			droppedCount.Inc()
+			droppedCount.Add(1)
 		} else if dec&LogSampled > 0 {
-			sampledCount.Inc()
+			sampledCount.Add(1)
 		}
 	}
 	return h, droppedCount, sampledCount

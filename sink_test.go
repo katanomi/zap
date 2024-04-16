@@ -22,7 +22,7 @@ package zap
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"strings"
 	"testing"
@@ -33,9 +33,22 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+func stubSinkRegistry(t testing.TB) *sinkRegistry {
+	origSinkRegistry := _sinkRegistry
+	t.Cleanup(func() {
+		_sinkRegistry = origSinkRegistry
+	})
+
+	r := newSinkRegistry()
+	_sinkRegistry = r
+	return r
+}
+
 func TestRegisterSink(t *testing.T) {
+	stubSinkRegistry(t)
+
 	const (
-		memScheme = "m"
+		memScheme = "mem"
 		nopScheme = "no-op.1234"
 	)
 	var memCalls, nopCalls int
@@ -49,21 +62,18 @@ func TestRegisterSink(t *testing.T) {
 	nopFactory := func(u *url.URL) (Sink, error) {
 		assert.Equal(t, u.Scheme, nopScheme, "Scheme didn't match registration.")
 		nopCalls++
-		return nopCloserSink{zapcore.AddSync(ioutil.Discard)}, nil
+		return nopCloserSink{zapcore.AddSync(io.Discard)}, nil
 	}
 
-	defer resetSinkRegistry()
-
 	require.NoError(t, RegisterSink(strings.ToUpper(memScheme), memFactory), "Failed to register scheme %q.", memScheme)
-	require.NoError(t, RegisterSink(nopScheme, nopFactory), "Failed to register scheme %q.", memScheme)
+	require.NoError(t, RegisterSink(nopScheme, nopFactory), "Failed to register scheme %q.", nopScheme)
 
-	sink, close, err := Open(
+	sink, closeSink, err := Open(
 		memScheme+"://somewhere",
 		nopScheme+"://somewhere-else",
 	)
-	assert.NoError(t, err, "Unexpected error opening URLs with registered schemes.")
-
-	defer close()
+	require.NoError(t, err, "Unexpected error opening URLs with registered schemes.")
+	defer closeSink()
 
 	assert.Equal(t, 1, memCalls, "Unexpected number of calls to memory factory.")
 	assert.Equal(t, 1, nopCalls, "Unexpected number of calls to no-op factory.")
@@ -75,7 +85,7 @@ func TestRegisterSink(t *testing.T) {
 
 func TestRegisterSinkErrors(t *testing.T) {
 	nopFactory := func(_ *url.URL) (Sink, error) {
-		return nopCloserSink{zapcore.AddSync(ioutil.Discard)}, nil
+		return nopCloserSink{zapcore.AddSync(io.Discard)}, nil
 	}
 	tests := []struct {
 		scheme string
@@ -89,12 +99,9 @@ func TestRegisterSinkErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run("scheme-"+tt.scheme, func(t *testing.T) {
-			defer resetSinkRegistry()
-
-			err := RegisterSink(tt.scheme, nopFactory)
-			if assert.Error(t, err, "expected error") {
-				assert.Contains(t, err.Error(), tt.err, "unexpected error")
-			}
+			r := newSinkRegistry()
+			err := r.RegisterSink(tt.scheme, nopFactory)
+			assert.ErrorContains(t, err, tt.err)
 		})
 	}
 }

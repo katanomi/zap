@@ -27,6 +27,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestLevelEnablerFunc(t *testing.T) {
@@ -55,6 +56,28 @@ func TestNewAtomicLevel(t *testing.T) {
 	assert.Equal(t, ErrorLevel, lvl.Level(), "Unexpected level after SetLevel.")
 	lvl = NewAtomicLevelAt(WarnLevel)
 	assert.Equal(t, WarnLevel, lvl.Level(), "Unexpected level after SetLevel.")
+}
+
+func TestParseAtomicLevel(t *testing.T) {
+	tests := []struct {
+		text  string
+		level AtomicLevel
+		err   string
+	}{
+		{"info", NewAtomicLevel(), ""},
+		{"DEBUG", NewAtomicLevelAt(DebugLevel), ""},
+		{"FOO", NewAtomicLevel(), `unrecognized level: "FOO"`},
+	}
+
+	for _, tt := range tests {
+		parsedAtomicLevel, err := ParseAtomicLevel(tt.text)
+		if len(tt.err) == 0 {
+			require.NoError(t, err)
+			assert.Equal(t, tt.level, parsedAtomicLevel)
+		} else {
+			assert.ErrorContains(t, err, tt.err)
+		}
+	}
 }
 
 func TestAtomicLevelMutation(t *testing.T) {

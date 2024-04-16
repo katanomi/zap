@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"go.uber.org/zap/internal/ztest"
+	//revive:disable:dot-imports
 	. "go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
@@ -47,6 +48,44 @@ func TestTeeUnusualInput(t *testing.T) {
 	t.Run("no input", func(t *testing.T) {
 		assert.Equal(t, NewNopCore(), NewTee(), "Expected to return NopCore.")
 	})
+}
+
+func TestLevelOfTee(t *testing.T) {
+	debugLogger, _ := observer.New(DebugLevel)
+	warnLogger, _ := observer.New(WarnLevel)
+
+	tests := []struct {
+		desc string
+		give []Core
+		want Level
+	}{
+		{desc: "empty", want: InvalidLevel},
+		{
+			desc: "debug",
+			give: []Core{debugLogger},
+			want: DebugLevel,
+		},
+		{
+			desc: "warn",
+			give: []Core{warnLogger},
+			want: WarnLevel,
+		},
+		{
+			desc: "debug and warn",
+			give: []Core{warnLogger, debugLogger},
+			want: DebugLevel,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.desc, func(t *testing.T) {
+			t.Parallel()
+
+			core := NewTee(tt.give...)
+			assert.Equal(t, tt.want, LevelOf(core), "Level of Tee core did not match.")
+		})
+	}
 }
 
 func TestTeeCheck(t *testing.T) {
@@ -82,7 +121,7 @@ func TestTeeWrite(t *testing.T) {
 		debugEntry := Entry{Level: DebugLevel, Message: "log-at-debug"}
 		warnEntry := Entry{Level: WarnLevel, Message: "log-at-warn"}
 		for _, ent := range []Entry{debugEntry, warnEntry} {
-			tee.Write(ent, nil)
+			assert.NoError(t, tee.Write(ent, nil))
 		}
 
 		for _, logs := range []*observer.ObservedLogs{debugLogs, warnLogs} {

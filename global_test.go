@@ -23,6 +23,7 @@ package zap
 import (
 	"log"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,7 +35,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 )
 
 func TestReplaceGlobals(t *testing.T) {
@@ -90,7 +90,10 @@ func TestGlobalsConcurrentUse(t *testing.T) {
 	}
 
 	ztest.Sleep(100 * time.Millisecond)
-	stop.Toggle()
+	// CAS loop to toggle the current value.
+	for old := stop.Load(); !stop.CompareAndSwap(old, !old); {
+		old = stop.Load()
+	}
 	wg.Wait()
 }
 
@@ -143,8 +146,7 @@ func TestNewStdLogAtFatal(t *testing.T) {
 
 func TestNewStdLogAtInvalid(t *testing.T) {
 	_, err := NewStdLogAt(NewNop(), zapcore.Level(99))
-	assert.Error(t, err, "Expected to get error.")
-	assert.Contains(t, err.Error(), "99", "Expected level code in error message")
+	assert.ErrorContains(t, err, "99", "Expected level code in error message")
 }
 
 func TestRedirectStdLog(t *testing.T) {
@@ -171,7 +173,7 @@ func TestRedirectStdLogCaller(t *testing.T) {
 		log.Print("redirected")
 		entries := logs.All()
 		require.Len(t, entries, 1, "Unexpected number of logs.")
-		assert.Contains(t, entries[0].Entry.Caller.File, "global_test.go", "Unexpected caller annotation.")
+		assert.Contains(t, entries[0].Caller.File, "global_test.go", "Unexpected caller annotation.")
 	})
 }
 
@@ -210,7 +212,7 @@ func TestRedirectStdLogAtCaller(t *testing.T) {
 			log.Print("redirected")
 			entries := logs.All()
 			require.Len(t, entries, 1, "Unexpected number of logs.")
-			assert.Contains(t, entries[0].Entry.Caller.File, "global_test.go", "Unexpected caller annotation.")
+			assert.Contains(t, entries[0].Caller.File, "global_test.go", "Unexpected caller annotation.")
 		})
 	}
 }
@@ -262,19 +264,18 @@ func TestRedirectStdLogAtInvalid(t *testing.T) {
 			restore()
 		}
 	}()
-	require.Error(t, err, "Expected to get error.")
-	assert.Contains(t, err.Error(), "99", "Expected level code in error message")
+	assert.ErrorContains(t, err, "99", "Expected level code in error message")
 }
 
 func checkStdLogMessage(t *testing.T, msg string, logs *observer.ObservedLogs) {
 	require.Equal(t, 1, logs.Len(), "Expected exactly one entry to be logged")
 	entry := logs.AllUntimed()[0]
 	assert.Equal(t, []Field{}, entry.Context, "Unexpected entry context.")
-	assert.Equal(t, "redirected", entry.Entry.Message, "Unexpected entry message.")
+	assert.Equal(t, "redirected", entry.Message, "Unexpected entry message.")
 	assert.Regexp(
 		t,
 		`/global_test.go:\d+$`,
-		entry.Entry.Caller.String(),
+		entry.Caller.String(),
 		"Unexpected caller annotation.",
 	)
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2016 Uber Technologies, Inc.
+// Copyright (c) 2016-2022 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,11 +24,12 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
-	"go.uber.org/atomic"
 	"go.uber.org/zap/internal/ztest"
+	//revive:disable:dot-imports
 	. "go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
@@ -85,6 +86,19 @@ func TestSampler(t *testing.T) {
 			writeSequence(sampler, i, lvl)
 		}
 		assertSequence(t, logs.TakeAll(), lvl, 1, 2, 5, 8)
+	}
+}
+
+func TestLevelOfSampler(t *testing.T) {
+	levels := []Level{DebugLevel, InfoLevel, WarnLevel, ErrorLevel, DPanicLevel, PanicLevel, FatalLevel}
+	for _, lvl := range levels {
+		lvl := lvl
+		t.Run(lvl.String(), func(t *testing.T) {
+			t.Parallel()
+
+			sampler, _ := fakeSampler(lvl, time.Minute, 2, 3)
+			assert.Equal(t, lvl, LevelOf(sampler), "Sampler level did not match.")
+		})
 	}
 }
 
@@ -145,7 +159,7 @@ func (c *countingCore) Check(ent Entry, ce *CheckedEntry) *CheckedEntry {
 }
 
 func (c *countingCore) Write(Entry, []Field) error {
-	c.logs.Inc()
+	c.logs.Add(1)
 	return nil
 }
 
@@ -232,7 +246,6 @@ func TestSamplerConcurrent(t *testing.T) {
 		int(dropped.Load()),
 		"Unexpected number of logs dropped",
 	)
-
 }
 
 func TestSamplerRaces(t *testing.T) {

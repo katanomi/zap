@@ -109,6 +109,20 @@ func TestJSONEncodeEntry(t *testing.T) {
 				}),
 			},
 		},
+		{
+			desc: "zero_time_omitted",
+			expected: `{
+				"L": "info",
+				"N": "name",
+				"M": "message"
+			}`,
+			ent: zapcore.Entry{
+				Level:      zapcore.InfoLevel,
+				Time:       time.Time{},
+				LoggerName: "name",
+				Message:    "message",
+			},
+		},
 	}
 
 	enc := zapcore.NewJSONEncoder(zapcore.EncoderConfig{
@@ -134,6 +148,35 @@ func TestJSONEncodeEntry(t *testing.T) {
 			buf.Free()
 		})
 	}
+}
+
+func TestNoEncodeLevelSupplied(t *testing.T) {
+	enc := zapcore.NewJSONEncoder(zapcore.EncoderConfig{
+		MessageKey:     "M",
+		LevelKey:       "L",
+		TimeKey:        "T",
+		NameKey:        "N",
+		CallerKey:      "C",
+		FunctionKey:    "F",
+		StacktraceKey:  "S",
+		EncodeTime:     zapcore.ISO8601TimeEncoder,
+		EncodeDuration: zapcore.SecondsDurationEncoder,
+		EncodeCaller:   zapcore.ShortCallerEncoder,
+	})
+
+	ent := zapcore.Entry{
+		Level:      zapcore.InfoLevel,
+		Time:       time.Date(2018, 6, 19, 16, 33, 42, 99, time.UTC),
+		LoggerName: "bob",
+		Message:    "lob law",
+	}
+
+	fields := []zapcore.Field{
+		zap.Int("answer", 42),
+	}
+
+	_, err := enc.EncodeEntry(ent, fields)
+	assert.NoError(t, err, "Unexpected JSON encoding error.")
 }
 
 func TestJSONEmptyConfig(t *testing.T) {

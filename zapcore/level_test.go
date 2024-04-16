@@ -31,14 +31,15 @@ import (
 
 func TestLevelString(t *testing.T) {
 	tests := map[Level]string{
-		DebugLevel:  "debug",
-		InfoLevel:   "info",
-		WarnLevel:   "warn",
-		ErrorLevel:  "error",
-		DPanicLevel: "dpanic",
-		PanicLevel:  "panic",
-		FatalLevel:  "fatal",
-		Level(-42):  "Level(-42)",
+		DebugLevel:   "debug",
+		InfoLevel:    "info",
+		WarnLevel:    "warn",
+		ErrorLevel:   "error",
+		DPanicLevel:  "dpanic",
+		PanicLevel:   "panic",
+		FatalLevel:   "fatal",
+		Level(-42):   "Level(-42)",
+		InvalidLevel: "Level(6)", // InvalidLevel does not have a name
 	}
 
 	for lvl, stringLevel := range tests {
@@ -73,6 +74,27 @@ func TestLevelText(t *testing.T) {
 		err := unmarshaled.UnmarshalText([]byte(tt.text))
 		assert.NoError(t, err, `Unexpected error unmarshaling text %q to level.`, tt.text)
 		assert.Equal(t, tt.level, unmarshaled, `Text %q unmarshaled to an unexpected level.`, tt.text)
+	}
+}
+
+func TestParseLevel(t *testing.T) {
+	tests := []struct {
+		text  string
+		level Level
+		err   string
+	}{
+		{"info", InfoLevel, ""},
+		{"DEBUG", DebugLevel, ""},
+		{"FOO", 0, `unrecognized level: "FOO"`},
+	}
+	for _, tt := range tests {
+		parsedLevel, err := ParseLevel(tt.text)
+		if len(tt.err) == 0 {
+			assert.NoError(t, err)
+			assert.Equal(t, tt.level, parsedLevel)
+		} else {
+			assert.ErrorContains(t, err, tt.err)
+		}
 	}
 }
 
@@ -137,7 +159,7 @@ func TestLevelNils(t *testing.T) {
 	}, "Level(nil).String() should panic")
 
 	assert.Panics(t, func() {
-		l.MarshalText()
+		_, _ = l.MarshalText() // should panic
 	}, "Expected to panic when marshalling a nil level.")
 
 	err := l.UnmarshalText([]byte("debug"))
@@ -147,7 +169,7 @@ func TestLevelNils(t *testing.T) {
 func TestLevelUnmarshalUnknownText(t *testing.T) {
 	var l Level
 	err := l.UnmarshalText([]byte("foo"))
-	assert.Contains(t, err.Error(), "unrecognized level", "Expected unmarshaling arbitrary text to fail.")
+	assert.ErrorContains(t, err, "unrecognized level", "Expected unmarshaling arbitrary text to fail.")
 }
 
 func TestLevelAsFlagValue(t *testing.T) {
@@ -174,4 +196,53 @@ func TestLevelAsFlagValue(t *testing.T) {
 		strings.Split(buf.String(), "\n")[0], // second line is help message
 		"Unexpected error output from invalid flag input.",
 	)
+}
+
+// enablerWithCustomLevel is a LevelEnabler that implements a custom Level
+// method.
+type enablerWithCustomLevel struct{ lvl Level }
+
+var _ leveledEnabler = (*enablerWithCustomLevel)(nil)
+
+func (l *enablerWithCustomLevel) Enabled(lvl Level) bool {
+	return l.lvl.Enabled(lvl)
+}
+
+func (l *enablerWithCustomLevel) Level() Level {
+	return l.lvl
+}
+
+func TestLevelOf(t *testing.T) {
+	tests := []struct {
+		desc string
+		give LevelEnabler
+		want Level
+	}{
+		{desc: "debug", give: DebugLevel, want: DebugLevel},
+		{desc: "info", give: InfoLevel, want: InfoLevel},
+		{desc: "warn", give: WarnLevel, want: WarnLevel},
+		{desc: "error", give: ErrorLevel, want: ErrorLevel},
+		{desc: "dpanic", give: DPanicLevel, want: DPanicLevel},
+		{desc: "panic", give: PanicLevel, want: PanicLevel},
+		{desc: "fatal", give: FatalLevel, want: FatalLevel},
+		{
+			desc: "leveledEnabler",
+			give: &enablerWithCustomLevel{lvl: InfoLevel},
+			want: InfoLevel,
+		},
+		{
+			desc: "noop",
+			give: NewNopCore(), // always disabled
+			want: InvalidLevel,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.desc, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, LevelOf(tt.give), "Reported level did not match.")
+		})
+	}
 }
